@@ -1,0 +1,60 @@
+name: Deploy Application via Bastion
+ 
+on:
+  push:
+    branches:
+      - main
+ 
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+ 
+    steps:
+      # Step 1: Checkout the repository
+      - name: Checkout code
+        uses: actions/checkout@v3
+ 
+      # Step 2: Set up SSH for public server
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.PUBLIC_SERVER_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+ 
+          # Add the public server's host key to the known_hosts file
+          ssh-keyscan -H ${{ secrets.PUBLIC_SERVER_IP }} >> ~/.ssh/known_hosts
+ 
+            # Step 3: Upload application to public server
+      - name: Upload application to public server
+        run: |
+          # Ensure the target directory exists on the public server
+          ssh ubuntu@${{ secrets.PUBLIC_SERVER_IP }} "mkdir -p /tmp/application_folder/"
+ 
+          # Copy all files to the public server
+          scp -r ./* ubuntu@${{ secrets.PUBLIC_SERVER_IP }}:/tmp/application_folder/
+ 
+ 
+      # Step 4: SSH into public server and deploy to private server
+      - name: Deploy to private server
+        run: |
+          ssh ubuntu@${{ secrets.PUBLIC_SERVER_IP }} << 'EOF'
+            echo "Connecting to the private server..."
+            PRIVATE_KEY="/home/ubuntu/mykey.pem"
+            PRIVATE_USER="ubuntu"
+            PRIVATE_SERVER_IP="10.0.1.254"
+            DEPLOYMENT_FOLDER="/home/ubuntu/LMS_New/frontend"
+            APPLICATION_FOLDER="/tmp/LMS_New/"
+ 
+            # Clean up the target directory on the private server
+            ssh -i $PRIVATE_KEY $PRIVATE_USER@$PRIVATE_SERVER_IP "rm -rf $DEPLOYMENT_FOLDER/*"
+ 
+            # Transfer application files to the private server
+            scp -i $PRIVATE_KEY -r $APPLICATION_FOLDER/ $PRIVATE_USER@$PRIVATE_SERVER_IP:$DEPLOYMENT_FOLDER/
+ 
+            echo "Application deployed to private server."
+          EOF
+ 
+      # Step 5: Clean up temporary files on the public server
+      - name: Clean up public server
+        run: |
+          ssh ubuntu@${{ secrets.PUBLIC_SERVER_IP }} "rm -rf /tmp/LMS_New/"
