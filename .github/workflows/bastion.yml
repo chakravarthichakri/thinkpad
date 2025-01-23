@@ -57,4 +57,53 @@ jobs:
       # Step 5: Clean up temporary files on the public server
       - name: Clean up public server
         run: |
+          ssh ubuntu@${{ secrets.PUBLIC_SERVER_IP }} "rm -rf /tmp/LMS_New/"name: Deploy Application via Bastion
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf "%s" "${{ secrets.PUBLIC_SERVER_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.PUBLIC_SERVER_IP }} >> ~/.ssh/known_hosts
+
+      - name: Debug SSH Connection
+        run: |
+          ssh -v ubuntu@${{ secrets.PUBLIC_SERVER_IP }} "echo 'SSH Connection Successful'"
+
+      - name: Upload application to public server
+        run: |
+          ssh ubuntu@${{ secrets.PUBLIC_SERVER_IP }} "mkdir -p /tmp/application_folder/"
+          scp -i ~/.ssh/id_rsa -r ./* ubuntu@${{ secrets.PUBLIC_SERVER_IP }}:/tmp/application_folder/
+
+      - name: Deploy to private server
+        run: |
+          ssh ubuntu@${{ secrets.PUBLIC_SERVER_IP }} << 'EOF'
+            echo "Connecting to private server..."
+            PRIVATE_KEY="/home/ubuntu/mykey.pem"
+            PRIVATE_USER="ubuntu"
+            PRIVATE_SERVER_IP="10.0.1.254"
+            DEPLOYMENT_FOLDER="/home/ubuntu/LMS_New/frontend"
+            APPLICATION_FOLDER="/tmp/LMS_New/"
+
+            ssh -i $PRIVATE_KEY -o StrictHostKeyChecking=no $PRIVATE_USER@$PRIVATE_SERVER_IP "rm -rf $DEPLOYMENT_FOLDER/*"
+            scp -i $PRIVATE_KEY -o StrictHostKeyChecking=no -r $APPLICATION_FOLDER/ $PRIVATE_USER@$PRIVATE_SERVER_IP:$DEPLOYMENT_FOLDER/
+
+            echo "Application deployed successfully!"
+          EOF
+
+      - name: Clean up public server
+        run: |
           ssh ubuntu@${{ secrets.PUBLIC_SERVER_IP }} "rm -rf /tmp/LMS_New/"
